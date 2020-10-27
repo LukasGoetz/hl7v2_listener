@@ -14,7 +14,7 @@ spec:
         app: hl7v2-listener
     spec:
       containers:
-      - image: gitlab.dbmi.klima.ads.local:5050/hlz/streaming/hl7v2_listener:v1.0.2
+      - image: internal_registry/hlz/streaming/hl7v2_listener:v1.0.2
         name: hl7v2-listener
         resources:
           requests:
