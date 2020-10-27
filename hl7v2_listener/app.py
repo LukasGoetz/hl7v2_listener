@@ -2,7 +2,7 @@
 
 '''HL7v2 listener receives HL7v2 messages, acknowledges
    and stores them in a database
-   Arguments: config file
+   Arguments: environment variables
    Returns: exit status
    Authors: Alejandro Cosa-Linan, Alejandro.Cosa-Linan@medma.uni-heidelberg.de
             Lukas Goetz, Lukas.Goetz@medma.uni-heidelberg.de
