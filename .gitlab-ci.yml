@@ -1,0 +1,102 @@
+image: docker:git
+
+variables:
+  DOCKER_REGISTRY: internal-registry.org
+  PROJECT_PATH: /hlz/streaming/hl7v2_listener
+  IMAGE_PATH: $DOCKER_REGISTRY$PROJECT_PATH
+  #GIT_SSL_NO_VERIFY: "0"
+  #NODE_TLS_REJECT_UNAUTHORIZED: "0"
+
+.job_defaults_ci:
+  only:
+    - develop
+    - merge_requests
+
+.job_defaults_cd:
+  only:
+    - master
+
+.docker_registry:
+  before_script:
+    - echo $REG_PWD | docker login -u $GITLAB_USR $DOCKER_REGISTRY --password-stdin
+  after_script:
+    - docker logout $DOCKER_REGISTRY
+  extends: .job_defaults_cd
+
+include:
+  - project: "hlz/devops/ci-templates"
+    file: ".hadolint.yml"
+  - project: "hlz/devops/ci-templates"
+    file: ".pylint.yml"
+
+stages:
+  - linting
+  - unit_testing
+  - system_testing
+  - versioning
+  - releasing
+  - k8s_releasing
+
+dockerfile_linting:
+  extends: .job_defaults_ci
+
+pythonfile_linting:
+  before_script:
+    - export https_proxy="http://proxy.org"
+    - pip install hl7 psycopg2-binary
+  extends: .job_defaults_ci
+
+unit_testing:
+  stage: unit_testing  
+  script:
+    - echo "Perform unit tests"  
+  extends: .job_defaults_ci
+
+system_testing:
+  stage: system_testing
+  script:
+    - echo "Build image, run container and perform system tests"
+  extends: .job_defaults_ci  
+
+get_next_version:
+  image: docker.miracum.org/miracum-devops/semantic-release:v17
+  stage: versioning
+  script:
+    - npx semantic-release --dry-run --branches master --no-ci
+    - test -e .VERSION || (echo $(git describe --abbrev=0 --tags | tr -d v) > .VERSION && touch .NORELEASE)
+    - echo "Determined Version $(cat .VERSION)"
+  artifacts:
+    paths:
+      - .VERSION
+      - .NORELEASE
+    expire_in: 1 week
+  extends: .job_defaults_cd
+
+create_gitlab_release:
+  image: docker.miracum.org/miracum-devops/semantic-release:v17
+  stage: releasing
+  script:
+    - npx semantic-release
+  extends: .job_defaults_cd
+
+create_push_docker_image:
+  image: docker:git
+  stage: releasing
+  script:
+    - export IMAGE_TAG=v$(cat .VERSION)
+    - docker build -t $IMAGE_PATH:$IMAGE_TAG -f dply/Dockerfile .
+    - docker push $IMAGE_PATH:$IMAGE_TAG
+    - docker logout $DOCKER_REGISTRY
+  extends: .docker_registry
+
+update_k8s_manifest:
+  stage: k8s_releasing
+  script:
+    - export VERSION_TAG=v$(cat .VERSION)
+    - git config --global user.email "user@uni-heidelberg.de"
+    - git config --global user.name "user"
+    - sed -i "s/v[0-9]\.[0-9]\.[0-9]/$VERSION_TAG/" dply/k8s_dply.yaml
+    - git add .
+    - 'git commit -m "ci: new manifest [skip ci]"'
+    - git push https://${GITLAB_USR}:${GITLAB_TOKEN}@10.30.80.51${PROJECT_PATH}.git HEAD:master
+  extends: .job_defaults_cd

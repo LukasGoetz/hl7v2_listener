@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hl7v2-listener
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: hl7v2-listener
+  template:
+    metadata:
+      labels:
+        app: hl7v2-listener
+    spec:
+      containers:
+      - image: gitlab.dbmi.klima.ads.local:5050/hlz/streaming/hl7v2_listener:v1.0.2
+        name: hl7v2-listener
+        resources:
+          requests:
+            cpu: 50m
+        ports:
+        - containerPort: 8788
+        env:
+          - name: LISTENER_HOST_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP          
+          - name: LISTENER_PORT
+            valueFrom:
+              secretKeyRef:
+                name: db-config-listener
+                key: listener_port
+          - name: LISTENER_RCV_PORT
+            valueFrom:
+              secretKeyRef:
+                name: db-config-listener
+                key: listener_rcv_port
+          - name: LISTENER_RCV_HOST
+            valueFrom:
+              secretKeyRef:
+                name: db-config-listener
+                key: listener_rcv_host
+          - name: DATABASE_HOST
+            valueFrom:
+              secretKeyRef:
+                name: db-config-listener
+                key: database_host
+          - name: DATABASE_DBNAME
+            valueFrom:
+              secretKeyRef:
+                name: db-config-listener
+                key: database_dbname
+          - name: DATABASE_USR
+            valueFrom:
+              secretKeyRef:
+                name: db-config-listener
+                key: database_usr
+          - name: DATABASE_PWD
+            valueFrom:
+              secretKeyRef:
+                name: db-config-listener
+                key: database_pwd
+      imagePullSecrets:
+      - name: regcred
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: listener-service
+spec:
+  selector:
+    app: hl7v2-listener
+  ports:
+  - protocol: TCP
+    port: 8788
+    targetPort: 8788
+  type: LoadBalancer
